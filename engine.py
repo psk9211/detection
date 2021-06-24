@@ -69,7 +69,7 @@ def _get_iou_types(model):
 
 
 @torch.no_grad()
-def evaluate(model, data_loader, device, max_iter=10, is_d2=False):
+def evaluate(model, data_loader, device, max_iter=10, type='pth'):
     n_threads = torch.get_num_threads()
     # FIXME remove this and make paste_masks_in_image run on the GPU
     torch.set_num_threads(1)
@@ -85,7 +85,7 @@ def evaluate(model, data_loader, device, max_iter=10, is_d2=False):
     coco_evaluator = CocoEvaluator(coco, iou_types)
     
     counter = 0
-    if not is_d2:
+    if type=='pth':
         for images, targets in metric_logger.log_every(data_loader, 100, header):
             images = list(img.to(device) for img in images)
             if torch.cuda.is_available():
@@ -93,7 +93,7 @@ def evaluate(model, data_loader, device, max_iter=10, is_d2=False):
             model_time = time.time()
             outputs = model(images)
             # [{"boxes", "scores", "labels"}]
-            #pdb.set_trace()
+            pdb.set_trace()
             outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
             model_time = time.time() - model_time
 
@@ -106,7 +106,29 @@ def evaluate(model, data_loader, device, max_iter=10, is_d2=False):
             counter += 1
             if counter >= max_iter:
                 break
-    else:
+    elif type=='ts':
+        for images, targets in metric_logger.log_every(data_loader, 100, header):
+            images = list(img.to(device) for img in images)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            model_time = time.time()
+            outputs = model(images)
+            # [{"boxes", "scores", "labels"}]
+            
+            outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs[1]]
+            model_time = time.time() - model_time
+
+            res = {target["image_id"].item(): output for target, output in zip(targets, outputs)}
+            evaluator_time = time.time()
+            coco_evaluator.update(res)
+            evaluator_time = time.time() - evaluator_time
+            metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
+
+            counter += 1
+            if counter >= max_iter:
+                break
+
+    elif type=='d2':
         for images, targets in metric_logger.log_every(data_loader, 100, header):
             images = list(img.to(device) for img in images)
 

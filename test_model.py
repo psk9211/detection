@@ -70,18 +70,16 @@ def main(args):
         
         evaluate(model, data_loader_test, device='cpu')
 
-        torch.save(model.state_dict(), '/home/workspace/detection/faster_rcnn_r50_static_quant.pth')
+        torch.jit.save(torch.jit.script(model), '/home/workspace/detection/faster_rcnn_r50_static_quant.pth')
+        #torch.save(model.state_dict(), '/home/workspace/detection/faster_rcnn_r50_static_quant.pth')
         #pdb.set_trace()
 
         print(model)
 
     if args.eval:
-        model = faster_rcnn.fasterrcnn_resnet50_fpn(pretrained=False, pretrained_backbone=False)
-        model.load_state_dict(torch.load(args.model))
-        model.to('cpu')
+        model = torch.jit.load(args.model)
+        evaluate(model, data_loader_test, device='cpu', type='ts')
 
-        evaluate(model, data_loader_test, device='cpu')
-        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
