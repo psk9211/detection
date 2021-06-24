@@ -2,6 +2,7 @@ import sys
 import os
 import os.path
 import pdb
+import argparse
 
 import torch
 import torch.quantization.quantize_fx as quantize_fx
@@ -34,7 +35,7 @@ def get_transform(train):
     return presets.DetectionPresetTrain() if train else presets.DetectionPresetEval()
 
 
-def main():
+def main(args):
     # Data loading code
     print("Loading data")
     dataset_test, num_classes = get_dataset('coco', "val", get_transform(train=False), '/home/workspace/datasets/coco')
@@ -47,32 +48,48 @@ def main():
         sampler=test_sampler, num_workers=4,
         collate_fn=utils.collate_fn)
 
-    model = faster_rcnn.fasterrcnn_resnet50_fpn(pretrained=False, pretrained_backbone=False)
-    model.load_state_dict(torch.load("/home/workspace/detection/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth"))
-    model.to('cpu')
-    
+    if args.quant:
+        model = faster_rcnn.fasterrcnn_resnet50_fpn(pretrained=False, pretrained_backbone=False)
+        model.load_state_dict(torch.load("/home/workspace/detection/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth"))
+        model.to('cpu')
+        
 
-    torch.backends.quantized.engine = 'qnnpack'
-    model.eval()
-    model.qconfig = torch.quantization.QConfig(
-        activation=torch.quantization.default_observer,
-        weight=torch.quantization.default_weight_observer)
-    
-    model.fuse_model()
-    torch.quantization.prepare(model, inplace=True)
-    
-    #calibration for static
-    evaluate(model, data_loader_test, device='cpu')
-    
-    torch.quantization.convert(model, inplace=True)
-    
-    evaluate(model, data_loader_test, device='cpu')
+        torch.backends.quantized.engine = 'qnnpack'
+        model.eval()
+        model.qconfig = torch.quantization.QConfig(
+            activation=torch.quantization.default_observer,
+            weight=torch.quantization.default_weight_observer)
+        
+        model.fuse_model()
+        torch.quantization.prepare(model, inplace=True)
+        
+        #calibration for static
+        evaluate(model, data_loader_test, device='cpu')
+        
+        torch.quantization.convert(model, inplace=True)
+        
+        evaluate(model, data_loader_test, device='cpu')
 
-    torch.save(model.state_dict(), '/home/workspace/detection/faster_rcnn_r50_static_quant.pth')
-    #pdb.set_trace()
+        torch.save(model.state_dict(), '/home/workspace/detection/faster_rcnn_r50_static_quant.pth')
+        #pdb.set_trace()
 
-    print(model)
+        print(model)
 
+    if args.eval:
+        model = faster_rcnn.fasterrcnn_resnet50_fpn(pretrained=False, pretrained_backbone=False)
+        model.load_state_dict(torch.load(args.model))
+        model.to('cpu')
+
+        evaluate(model, data_loader_test, device='cpu')
+        
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--quant', action='store_true')
+
+    parser.add_argument('--model', type=str, help='Model file path')
+
+    args = parser.parse_args()
+
+    main(args)
