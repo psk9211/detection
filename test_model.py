@@ -52,29 +52,34 @@ def main(args):
         model = faster_rcnn.fasterrcnn_resnet50_fpn(pretrained=False, pretrained_backbone=False)
         model.load_state_dict(torch.load("/home/workspace/detection/fasterrcnn_resnet50_fpn_coco-258fb6c6.pth"))
         model.to('cpu')
-        
-
         torch.backends.quantized.engine = 'qnnpack'
         model.eval()
-        model.qconfig = torch.quantization.QConfig(
-            activation=torch.quantization.default_observer,
-            weight=torch.quantization.default_weight_observer)
-        
-        model.fuse_model()
-        torch.quantization.prepare(model, inplace=True)
-        
-        #calibration for static
-        evaluate(model, data_loader_test, device='cpu')
-        
-        torch.quantization.convert(model, inplace=True)
-        
-        evaluate(model, data_loader_test, device='cpu')
 
-        torch.jit.save(torch.jit.script(model), '/home/workspace/detection/faster_rcnn_r50_static_quant.pth')
-        #torch.save(model.state_dict(), '/home/workspace/detection/faster_rcnn_r50_static_quant.pth')
-        #pdb.set_trace()
+        if args.mode =='static':
+            model.qconfig = torch.quantization.QConfig(
+                activation=torch.quantization.default_observer,
+                weight=torch.quantization.default_weight_observer)
+            
+            model.fuse_model()
+            torch.quantization.prepare(model, inplace=True)
+            
+            #calibration for static
+            evaluate(model, data_loader_test, device='cpu')
+            
+            torch.quantization.convert(model, inplace=True)
+            
+            evaluate(model, data_loader_test, device='cpu')
+            torch.jit.save(torch.jit.script(model), '/home/workspace/detection/faster_rcnn_r50_static_quant.pth')
 
-        print(model)
+            print(model)
+        
+        elif args.mode == 'dynamic':
+            q_model = torch.quantization.quantize_dynamic(
+                model, {torch.nn.Conv2d, torch.nn.Linear}
+            )
+            print(q_model)
+            evaluate(q_model, data_loader_test, device='cpu')
+            torch.jit.save(torch.jit.script(model), '/home/workspace/detection/faster_rcnn_r50_dynamic_quant.pth')
 
     if args.eval:
         model = torch.jit.load(args.model)
@@ -85,7 +90,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--quant', action='store_true')
-
+    parser.add_argument('--mode', type=str, default='static')
     parser.add_argument('--model', type=str, help='Model file path')
 
     args = parser.parse_args()

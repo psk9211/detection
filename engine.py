@@ -93,7 +93,7 @@ def evaluate(model, data_loader, device, max_iter=10, type='pth'):
             model_time = time.time()
             outputs = model(images)
             # [{"boxes", "scores", "labels"}]
-            pdb.set_trace()
+            
             outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
             model_time = time.time() - model_time
 
