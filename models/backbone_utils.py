@@ -53,12 +53,6 @@ class BackboneWithFPN(nn.Module):
     def forward(self, x):
         x = self.quant(x)
         x = self.body(x)
-        
-        #x['0'] = self.dequant(x['0'])
-        #x['1'] = self.dequant(x['1'])
-        #x['2'] = self.dequant(x['2'])
-        #x['3'] = self.dequant(x['3'])
-    
         x = self.fpn(x)
 
         # unpack OrderedDict for dequant
@@ -70,12 +64,9 @@ class BackboneWithFPN(nn.Module):
             temp.append(self.dequant(l))            
         x = OrderedDict([(k, v) for k, v in zip(names, temp)])
 
-        #pdb.set_trace()
-        #x = self.dequant(x)
         return x
     
     def fuse_model(self):
-        #pdb.set_trace()
         for m in self.body.modules():
             if type(m) == IntermediateLayerGetter:
                 m.fuse_model()

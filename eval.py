@@ -63,8 +63,10 @@ def main(args):
 
     print("Creating model")
     
-    if args.custom:
+    if args.type == 'ts':
         model = torch.jit.load(args.model)
+        model.to(device)
+        model.eval()
     else:
         kwargs = {
             "trainable_backbone_layers": args.trainable_backbone_layers
@@ -74,13 +76,10 @@ def main(args):
                 kwargs["rpn_score_thresh"] = args.rpn_score_thresh
         model = torchvision.models.detection.__dict__[args.model](num_classes=num_classes, pretrained=args.pretrained,
                                                                     **kwargs)
-
-                                                                  
-    model.to(device)
-    if not args.custom:
+        model.to(device)
         model.eval()
 
-    evaluate(model, data_loader_test, device=device, is_d2=args.custom)
+    evaluate(model, data_loader_test, device=device, type=args.type)
     return
 
 
@@ -88,7 +87,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(
         description=__doc__)
-
+    parser = argparse.ArgumentParser(description='Evaluation for object detecion task (COCO dataset)')
+    
     parser.add_argument('--data-path', default='/home/workspace/datasets/coco', help='dataset')
     parser.add_argument('--dataset', default='coco', help='dataset')
     parser.add_argument('--model', 
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     parser.add_argument('--rpn-score-thresh', default=None, type=float, help='rpn score threshold for faster-rcnn')
     parser.add_argument('--trainable-backbone-layers', default=None, type=int,
                         help='number of trainable layers of backbone')
-    parser.add_argument("--custom", action="store_true",)
+    parser.add_argument("--type", type=str, default='pth')
     parser.add_argument(
         "--pretrained",
         dest="pretrained",

@@ -3,9 +3,14 @@ import datetime
 import errno
 import os
 import time
+import tqdm
 
 import torch
 import torch.distributed as dist
+import torchvision
+import torchvision.transforms as transforms
+
+import pdb
 
 
 class SmoothedValue(object):
@@ -293,3 +298,139 @@ def init_distributed_mode(args):
                                          world_size=args.world_size, rank=args.rank)
     torch.distributed.barrier()
     setup_for_distributed(args.rank == 0)
+
+
+
+##############
+# codes for CNN models
+##############
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self, name, fmt=':f'):
+        self.name = name
+        self.fmt = fmt
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = self.sum / self.count
+
+    def __str__(self):
+        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+        return fmtstr.format(**self.__dict__)
+
+
+def accuracy(output, target, topk=(1,)):
+    """Computes the accuracy over the k top predictions for the specified values of k"""
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = target.size(0)
+
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target.view(1, -1).expand_as(pred))
+
+        res = []
+        for k in topk:
+            correct_k = correct[:k].reshape(-1).float().sum(0, keepdim=True)
+            res.append(correct_k.mul_(100.0 / batch_size))
+        return res
+
+
+def evaluate(model, data_loader, neval_batches=None):
+    elapsed = 0
+    top1 = AverageMeter('Acc@1', ':6.2f')
+    top5 = AverageMeter('Acc@5', ':6.2f')
+    cnt = 0
+
+    with torch.no_grad():
+        model.eval()
+        for image, target in data_loader:
+            start = time.time()
+            #pdb.set_trace()
+            output = model(image)
+            end = time.time()
+            elapsed = elapsed + (end-start)
+
+            cnt += 1
+
+            acc1, acc5 = accuracy(output, target, topk=(1, 5))
+            print('.', end = '')
+            top1.update(acc1[0], image.size(0))
+            top5.update(acc5[0], image.size(0))
+            if neval_batches is not None and cnt >= neval_batches:
+                break
+
+
+    num_images = cnt * image.shape[0]
+    print(f'Evaluation accuracy on {num_images} images, top1: {top1.avg:.2f} / top5: {top5.avg:.2f}')
+    print(f'Elapsed time: {elapsed/num_images*1000:.2f}ms\n')
+    return top1, top5, elapsed
+
+
+def prepare_data_loaders(data_path, train_batch_size=30, eval_batch_size=1):
+
+    traindir = os.path.join(data_path, 'train')
+    valdir = os.path.join(data_path, 'val')
+    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                     std=[0.229, 0.224, 0.225])
+
+    dataset = torchvision.datasets.ImageFolder(
+        traindir,
+        transforms.Compose([
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            normalize,
+        ]))
+
+    dataset_test = torchvision.datasets.ImageFolder(
+        valdir,
+        transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            normalize,
+        ]))
+
+    train_sampler = torch.utils.data.RandomSampler(dataset)
+    test_sampler = torch.utils.data.SequentialSampler(dataset_test)
+
+    data_loader = torch.utils.data.DataLoader(
+        dataset, batch_size=train_batch_size,
+        sampler=train_sampler)
+
+    data_loader_test = torch.utils.data.DataLoader(
+        dataset_test, batch_size=eval_batch_size,
+        num_workers=4,
+        sampler=test_sampler)
+
+    return data_loader, data_loader_test
+
+
+def run_iterative_benchmark(model, data_loader, num_eval_batches, eval_batch_size, name=None, iter=10):
+    top1_toal = 0
+    top5_toal = 0 
+    time_total = 0
+    for i in range(iter):
+        top1, top5, time = evaluate(model, data_loader, neval_batches=1)  
+        top1_toal += top1.avg
+        top5_toal += top5.avg
+        time_total += time
+
+    num_images = num_eval_batches * eval_batch_size
+    print(f'Model: {name}')
+    print(f'Average on {iter} times')
+    print(f'Evaluation accuracy on {num_eval_batches * eval_batch_size} images, top1: {top1_toal/iter:.2f} / top5: {top5_toal/iter:.2f}')
+    print(f'Elapsed time: {time_total/num_images*1000/iter:.2f}ms\n')
+
+

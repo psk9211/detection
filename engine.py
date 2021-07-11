@@ -69,7 +69,7 @@ def _get_iou_types(model):
 
 
 @torch.no_grad()
-def evaluate(model, data_loader, device, max_iter=10, type='pth'):
+def evaluate(model, data_loader, device, neval_batches=None, type='pth'):
     n_threads = torch.get_num_threads()
     # FIXME remove this and make paste_masks_in_image run on the GPU
     torch.set_num_threads(1)
@@ -84,7 +84,7 @@ def evaluate(model, data_loader, device, max_iter=10, type='pth'):
     iou_types = _get_iou_types(model)
     coco_evaluator = CocoEvaluator(coco, iou_types)
     
-    counter = 0
+    cnt = 0
     if type=='pth':
         for images, targets in metric_logger.log_every(data_loader, 100, header):
             images = list(img.to(device) for img in images)
@@ -103,14 +103,15 @@ def evaluate(model, data_loader, device, max_iter=10, type='pth'):
             evaluator_time = time.time() - evaluator_time
             metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
 
-            counter += 1
-            if counter >= max_iter:
+            cnt += 1
+            if neval_batches is not None and cnt >= neval_batches:
                 break
     elif type=='ts':
-        for images, targets in metric_logger.log_every(data_loader, 100, header):
+        for images, targets in metric_logger.log_every(data_loader, 10, header):
             images = list(img.to(device) for img in images)
             if torch.cuda.is_available():
                 torch.cuda.synchronize()
+            pdb.set_trace()
             model_time = time.time()
             outputs = model(images)
             # [{"boxes", "scores", "labels"}]
@@ -124,8 +125,8 @@ def evaluate(model, data_loader, device, max_iter=10, type='pth'):
             evaluator_time = time.time() - evaluator_time
             metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
 
-            counter += 1
-            if counter >= max_iter:
+            cnt += 1
+            if neval_batches is not None and cnt >= neval_batches:
                 break
 
     elif type=='d2':
@@ -150,8 +151,8 @@ def evaluate(model, data_loader, device, max_iter=10, type='pth'):
             evaluator_time = time.time() - evaluator_time
             metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
 
-            counter += 1
-            if counter >= max_iter:
+            cnt += 1
+            if neval_batches is not None and cnt >= neval_batches:
                 break
 
 
