@@ -62,3 +62,14 @@ python quantize_cnn_models.py --eval --model-file='./pth/resnet50_static.pth' --
 python quantize_cnn_models.py --eval --model-file='/home/psk/.cache/torch/hub/checkpoints/resnet50-0676ba61.pth' \
 --pretrained --arch='resnet50'
 ```
+
+## Export to ONNX
+```cmd
+# Export torchscript model
+python export2onnx.py --type='cnn' --ts --test\
+--model-file='./pth/resnet50_static.pth
+
+# Export FP32 model
+python export2onnx.py --type='cnn' --arch='resnet50' --test\
+--model-file='./pth/resnet50-0676ba61.pth
+```
